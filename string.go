@@ -1,7 +1,6 @@
 package cache
 
 import (
-	"errors"
 	"time"
 )
 
@@ -118,21 +117,4 @@ func Get[T any](cache String, key string) (value T, err error) {
 		return value, ErrTypeAssertionFail
 	}
 	return value, nil
-}
-
-// GetOrSet 获取一个键值对，如果键不存在则设置一个默认值并返回
-func GetOrSet[T any](cache String, key string, valueFn func() (T, error), ttl int64) (value T, err error) {
-	if value, err = Get[T](cache, key); err == nil {
-		return value, nil
-	}
-
-	if errors.Is(err, ErrKeyNotFound) {
-		if value, err = valueFn(); err == nil {
-			err = cache.Set(key, value, ttl)
-			return value, err
-		}
-		return value, err
-	}
-
-	return value, err
 }

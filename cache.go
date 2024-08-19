@@ -14,25 +14,28 @@ type item struct {
 type Cache interface {
 	List() List
 	String() String
+	StringHandler() Handler
 	Close()
 }
 
 // memoryCache 是一个内存数据存储，具体实现了 Cache 接口
 type memoryCache struct {
-	data    map[string]item
-	lists   map[string][]interface{}
-	mutex   sync.RWMutex
-	closed  bool
-	closeCh chan struct{}
-	wg      sync.WaitGroup
+	data        map[string]item
+	dataHandler map[string]HandlerFunc
+	lists       map[string][]interface{}
+	mutex       sync.RWMutex
+	closed      bool
+	closeCh     chan struct{}
+	wg          sync.WaitGroup
 }
 
 // NewCache 创建一个新的 Cache
 func NewCache() Cache {
 	db := &memoryCache{
-		data:    make(map[string]item),
-		lists:   make(map[string][]interface{}),
-		closeCh: make(chan struct{}),
+		data:        make(map[string]item),
+		dataHandler: make(map[string]HandlerFunc),
+		lists:       make(map[string][]interface{}),
+		closeCh:     make(chan struct{}),
 	}
 	db.wg.Add(1)
 	go db.cleanupExpiredKeys()
