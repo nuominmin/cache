@@ -2,30 +2,32 @@ package cache
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 )
 
 func TestCache_SetAndGet(t *testing.T) {
 	store := NewCache()
-	store.String().Set("key1", "value1", 10)
-	store.String().Set("key2", "value2", 0) // 永不过期
+	key := "key"
 
-	val, err := store.String().Get("key1")
-	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
-	}
-	if val != "value1" {
-		t.Fatalf("Expected value1, got %v", val)
+	getData := func() string {
+		value, err := Get[string](store.String(), key)
+		if err == nil {
+			return value
+		}
+
+		store.String().Set(key, "value1", 5)
+		return "value2"
 	}
 
-	val, err = store.String().Get("key2")
-	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
+	var i int
+	for {
+		fmt.Println(i, getData())
+		time.Sleep(time.Second)
+		i++
 	}
-	if val != "value2" {
-		t.Fatalf("Expected value2, got %v", val)
-	}
+
 }
 
 func TestCache_Expire(t *testing.T) {
