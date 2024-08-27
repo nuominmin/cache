@@ -95,7 +95,7 @@ func (db *memoryCache) Expire(key string, ttl int64) error {
 	return nil
 }
 
-// Set 是一个泛型函数，用于设置键值对
+// Set 设置键值对
 func Set[T any](cache String, key string, value T, ttl int64) error {
 	if cache == nil {
 		return ErrDBClosed
@@ -103,7 +103,7 @@ func Set[T any](cache String, key string, value T, ttl int64) error {
 	return cache.Set(key, value, ttl)
 }
 
-// Get 是一个泛型函数，用于获取键值对
+// Get 获取键值对
 func Get[T any](cache String, key string) (value T, err error) {
 	if cache == nil {
 		return value, ErrDBClosed
@@ -116,5 +116,28 @@ func Get[T any](cache String, key string) (value T, err error) {
 	if value, ok = v.(T); !ok {
 		return value, ErrTypeAssertionFail
 	}
+	return value, nil
+}
+
+// GetOrSet 获取键值对，不存在将会调用 fetchFunc 函数获取数据并缓存起来
+func GetOrSet[T any](cache String, key string, fetchFunc func() (T, error), ttl int64) (T, error) {
+	var value T
+	var err error
+
+	// 尝试从缓存中获取数据
+	if value, err = Get[T](cache, key); err == nil {
+		return value, nil
+	}
+
+	// 如果缓存中没有数据，则调用 fetchFunc 获取
+	if value, err = fetchFunc(); err != nil {
+		return value, err
+	}
+
+	// 将获取到的数据缓存起来
+	if err = Set(cache, key, value, ttl); err != nil {
+		return value, err
+	}
+
 	return value, nil
 }
