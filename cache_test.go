@@ -13,12 +13,16 @@ func TestCache_SetAndGet(t *testing.T) {
 
 	var i int
 	for {
-		value, _ := GetOrSet[string](store, key, func() (string, error) {
-			time.Sleep(time.Second * time.Duration(5))
-			return "value", nil
-		}, 10)
+		for j := 0; j < 5; j++ {
+			go func(i, j int) {
+				value, _ := GetOrSet[string](store, key, func() (string, error) {
+					time.Sleep(time.Second * time.Duration(5))
+					return fmt.Sprintf("value,%d, %d", j, i), nil
+				}, 10)
+				fmt.Println(value)
+			}(i, j)
+		}
 
-		fmt.Println(i, value)
 		time.Sleep(time.Second)
 		i++
 	}

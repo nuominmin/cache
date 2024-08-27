@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -14,28 +15,51 @@ type item struct {
 type Cache interface {
 	List() List
 	String() String
-	StringHandler() Handler
+	StringHandler() StringHandler
 	Close()
 }
 
 // memoryCache 是一个内存数据存储，具体实现了 Cache 接口
 type memoryCache struct {
-	data        map[string]item
-	dataHandler map[string]HandlerFunc
-	lists       map[string][]interface{}
-	mutex       sync.RWMutex
+	keyLocks map[string]*sync.Mutex
+	mu       sync.Mutex
+
+	data        sync.Map // map[string] item
+	dataHandler sync.Map // map[string] HandlerFunc
+	lists       sync.Map // map[string] []interface{}
 	closed      bool
 	closeCh     chan struct{}
 	wg          sync.WaitGroup
 }
 
+func (db *memoryCache) acquireLock(t string, key string) {
+	key = fmt.Sprintf("%s:%s", t, key)
+
+	db.mu.Lock()
+	if _, exists := db.keyLocks[key]; !exists {
+		db.keyLocks[key] = &sync.Mutex{}
+	}
+	lock := db.keyLocks[key]
+	db.mu.Unlock()
+
+	lock.Lock()
+}
+
+func (db *memoryCache) releaseLock(t, key string) {
+	key = fmt.Sprintf("%s:%s", t, key)
+
+	db.mu.Lock()
+	if lock, exists := db.keyLocks[key]; exists {
+		lock.Unlock()
+	}
+	db.mu.Unlock()
+}
+
 // NewCache 创建一个新的 Cache
 func NewCache() Cache {
 	db := &memoryCache{
-		data:        make(map[string]item),
-		dataHandler: make(map[string]HandlerFunc),
-		lists:       make(map[string][]interface{}),
-		closeCh:     make(chan struct{}),
+		keyLocks: make(map[string]*sync.Mutex),
+		closeCh:  make(chan struct{}),
 	}
 	db.wg.Add(1)
 	go db.cleanupExpiredKeys()
@@ -52,16 +76,15 @@ func (db *memoryCache) cleanupExpiredKeys() {
 	for {
 		select {
 		case <-ticker.C:
-			db.mutex.Lock()
-			if len(db.data) > 0 {
-				now := time.Now().UnixNano()
-				for k, it := range db.data {
-					if it.expiration > 0 && now > it.expiration {
-						delete(db.data, k)
-					}
+			now := time.Now().UnixNano()
+			db.data.Range(func(key, value any) bool {
+				it := value.(*item)
+				if it.expiration > 0 && now > it.expiration {
+					db.data.Delete(key)
 				}
-			}
-			db.mutex.Unlock()
+				return true
+			})
+
 		case <-db.closeCh:
 			return
 		}
@@ -70,13 +93,11 @@ func (db *memoryCache) cleanupExpiredKeys() {
 
 // Close 关闭 cache 并且清理任务
 func (db *memoryCache) Close() {
-	db.mutex.Lock()
+	db.mu.Lock()
 	db.closed = true
 	close(db.closeCh)
-	db.mutex.Unlock()
+	db.mu.Unlock()
 	db.wg.Wait()
 
-	db.mutex.Lock()
-	db.data = make(map[string]item)
-	db.mutex.Unlock()
+	db.data = sync.Map{}
 }

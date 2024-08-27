@@ -18,9 +18,6 @@ func (db *memoryCache) String() String {
 
 // Set 设置一个键值对，可以选择设置过期时间（以秒为单位）
 func (db *memoryCache) Set(key string, value interface{}, ttl int64) error {
-	db.mutex.Lock()
-	defer db.mutex.Unlock()
-
 	if db.closed {
 		return ErrDBClosed
 	}
@@ -30,29 +27,27 @@ func (db *memoryCache) Set(key string, value interface{}, ttl int64) error {
 		expiration = time.Now().UnixNano() + ttl*int64(time.Second)
 	}
 
-	db.data[key] = item{
+	db.data.Store(key, item{
 		object:     value,
 		expiration: expiration,
-	}
+	})
 	return nil
 }
 
 // Get 获取一个键的值，如果键不存在或者已过期则返回错误
 func (db *memoryCache) Get(key string) (interface{}, error) {
-	db.mutex.RLock()
-	defer db.mutex.RUnlock()
-
 	if db.closed {
 		return nil, ErrDBClosed
 	}
 
-	it, ok := db.data[key]
+	value, ok := db.data.Load(key)
 	if !ok {
 		return nil, ErrKeyNotFound
 	}
 
+	it := value.(item)
 	if it.expiration > 0 && time.Now().UnixNano() > it.expiration {
-		delete(db.data, key)
+		db.data.Delete(key)
 		return nil, ErrKeyExpired
 	}
 
@@ -61,38 +56,33 @@ func (db *memoryCache) Get(key string) (interface{}, error) {
 
 // Del 删除一个键
 func (db *memoryCache) Del(key string) error {
-	db.mutex.Lock()
-	defer db.mutex.Unlock()
-
 	if db.closed {
 		return ErrDBClosed
 	}
 
-	delete(db.data, key)
+	db.data.Delete(key)
 	return nil
 }
 
 // Expire 设置一个键的过期时间（以秒为单位）
 func (db *memoryCache) Expire(key string, ttl int64) error {
-	db.mutex.Lock()
-	defer db.mutex.Unlock()
-
 	if db.closed {
 		return ErrDBClosed
 	}
 
-	it, ok := db.data[key]
+	value, ok := db.data.Load(key)
 	if !ok {
 		return ErrKeyNotFound
 	}
 
+	it := value.(item)
 	if ttl > 0 {
 		it.expiration = time.Now().UnixNano() + ttl*int64(time.Second)
 	} else {
 		it.expiration = 0
 	}
 
-	db.data[key] = it
+	db.data.Store(key, it)
 	return nil
 }
 
@@ -122,6 +112,9 @@ func Get[T any](cache Cache, key string) (value T, err error) {
 
 // GetOrSetWithCacheControl 获取键值对，不存在将会调用 fetchFunc 函数获取数据并缓存起来
 func GetOrSetWithCacheControl[T any](cache Cache, key string, fetchFunc func() (T, bool, error), ttl int64) (T, error) {
+	cache.(*memoryCache).acquireLock("StringHandler", key)
+	defer cache.(*memoryCache).releaseLock("StringHandler", key)
+
 	// 尝试从缓存中获取数据
 	value, err := Get[T](cache, key)
 	if err == nil {
