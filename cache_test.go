@@ -11,19 +11,14 @@ func TestCache_SetAndGet(t *testing.T) {
 	store := NewCache()
 	key := "key"
 
-	getData := func() string {
-		value, err := Get[string](store.String(), key)
-		if err == nil {
-			return value
-		}
-
-		store.String().Set(key, "value1", 5)
-		return "value2"
-	}
-
 	var i int
 	for {
-		fmt.Println(i, getData())
+		value, _ := GetOrSet[string](store, key, func() (string, error) {
+			time.Sleep(time.Second * time.Duration(5))
+			return "value", nil
+		}, 10)
+
+		fmt.Println(i, value)
 		time.Sleep(time.Second)
 		i++
 	}

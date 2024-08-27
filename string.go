@@ -46,8 +46,8 @@ func (db *memoryCache) Get(key string) (interface{}, error) {
 		return nil, ErrDBClosed
 	}
 
-	it, found := db.data[key]
-	if !found {
+	it, ok := db.data[key]
+	if !ok {
 		return nil, ErrKeyNotFound
 	}
 
@@ -120,8 +120,8 @@ func Get[T any](cache Cache, key string) (value T, err error) {
 	return value, nil
 }
 
-// GetOrSet 获取键值对，不存在将会调用 fetchFunc 函数获取数据并缓存起来
-func GetOrSet[T any](cache Cache, key string, fetchFunc func() (T, error), ttl int64) (T, error) {
+// GetOrSetWithCacheControl 获取键值对，不存在将会调用 fetchFunc 函数获取数据并缓存起来
+func GetOrSetWithCacheControl[T any](cache Cache, key string, fetchFunc func() (T, bool, error), ttl int64) (T, error) {
 	// 尝试从缓存中获取数据
 	value, err := Get[T](cache, key)
 	if err == nil {
@@ -133,14 +133,25 @@ func GetOrSet[T any](cache Cache, key string, fetchFunc func() (T, error), ttl i
 	}
 
 	// 如果缓存中没有数据，则调用 fetchFunc 获取
-	if value, err = fetchFunc(); err != nil {
+	var shouldCache bool
+	if value, shouldCache, err = fetchFunc(); err != nil {
 		return value, err
 	}
 
-	// 将获取到的数据缓存起来
-	if err = Set[T](cache, key, value, ttl); err != nil {
-		return value, err
+	// 如果 shouldCache 为 true，则将获取到的数据缓存起来
+	if shouldCache {
+		if err = Set[T](cache, key, value, ttl); err != nil {
+			return value, err
+		}
 	}
 
 	return value, nil
+}
+
+// GetOrSet 获取键值对，不存在将会调用 fetchFunc 函数获取数据并缓存起来
+func GetOrSet[T any](cache Cache, key string, fetchFunc func() (T, error), ttl int64) (T, error) {
+	return GetOrSetWithCacheControl[T](cache, key, func() (T, bool, error) {
+		value, err := fetchFunc()
+		return value, true, err
+	}, ttl)
 }
