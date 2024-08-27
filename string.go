@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"errors"
 	"time"
 )
 
@@ -96,20 +97,20 @@ func (db *memoryCache) Expire(key string, ttl int64) error {
 }
 
 // Set 设置键值对
-func Set[T any](cache String, key string, value T, ttl int64) error {
+func Set[T any](cache Cache, key string, value T, ttl int64) error {
 	if cache == nil {
 		return ErrDBClosed
 	}
-	return cache.Set(key, value, ttl)
+	return cache.String().Set(key, value, ttl)
 }
 
 // Get 获取键值对
-func Get[T any](cache String, key string) (value T, err error) {
+func Get[T any](cache Cache, key string) (value T, err error) {
 	if cache == nil {
 		return value, ErrDBClosed
 	}
 	var v interface{}
-	if v, err = cache.Get(key); err != nil {
+	if v, err = cache.String().Get(key); err != nil {
 		return value, err
 	}
 	var ok bool
@@ -120,13 +121,15 @@ func Get[T any](cache String, key string) (value T, err error) {
 }
 
 // GetOrSet 获取键值对，不存在将会调用 fetchFunc 函数获取数据并缓存起来
-func GetOrSet[T any](cache String, key string, fetchFunc func() (T, error), ttl int64) (T, error) {
-	var value T
-	var err error
-
+func GetOrSet[T any](cache Cache, key string, fetchFunc func() (T, error), ttl int64) (T, error) {
 	// 尝试从缓存中获取数据
-	if value, err = Get[T](cache, key); err == nil {
+	value, err := Get[T](cache, key)
+	if err == nil {
 		return value, nil
+	}
+
+	if errors.Is(err, ErrDBClosed) {
+		return value, err
 	}
 
 	// 如果缓存中没有数据，则调用 fetchFunc 获取
@@ -135,7 +138,7 @@ func GetOrSet[T any](cache String, key string, fetchFunc func() (T, error), ttl 
 	}
 
 	// 将获取到的数据缓存起来
-	if err = Set(cache, key, value, ttl); err != nil {
+	if err = Set[T](cache, key, value, ttl); err != nil {
 		return value, err
 	}
 
