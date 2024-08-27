@@ -27,9 +27,6 @@ func (db *memoryCache) StringHandler() StringHandler {
 
 // RegisterHandler 添加一个处理函数，并确保 key 唯一
 func (db *memoryCache) RegisterHandler(key string, handlerFunc HandlerFunc) error {
-	db.mu.Lock()
-	defer db.mu.Unlock()
-
 	if _, ok := db.dataHandler.Load(key); ok {
 		return ErrHandlerKeyExists
 	}

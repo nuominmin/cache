@@ -21,7 +21,7 @@ type Cache interface {
 
 // memoryCache 是一个内存数据存储，具体实现了 Cache 接口
 type memoryCache struct {
-	keyLocks map[string]*sync.Mutex
+	keyLocks sync.Map // map[string]*sync.Mutex
 	mu       sync.Mutex
 
 	data        sync.Map // map[string] item
@@ -35,31 +35,28 @@ type memoryCache struct {
 func (db *memoryCache) acquireLock(t string, key string) {
 	key = fmt.Sprintf("%s:%s", t, key)
 
-	db.mu.Lock()
-	if _, exists := db.keyLocks[key]; !exists {
-		db.keyLocks[key] = &sync.Mutex{}
+	if value, ok := db.keyLocks.Load(key); ok {
+		value.(*sync.Mutex).Lock()
+		return
 	}
-	lock := db.keyLocks[key]
-	db.mu.Unlock()
 
+	lock := &sync.Mutex{}
+	db.keyLocks.Store(key, lock)
 	lock.Lock()
 }
 
 func (db *memoryCache) releaseLock(t, key string) {
 	key = fmt.Sprintf("%s:%s", t, key)
 
-	db.mu.Lock()
-	if lock, exists := db.keyLocks[key]; exists {
-		lock.Unlock()
+	if value, ok := db.keyLocks.Load(key); ok {
+		value.(*sync.Mutex).Unlock()
 	}
-	db.mu.Unlock()
 }
 
 // NewCache 创建一个新的 Cache
 func NewCache() Cache {
 	db := &memoryCache{
-		keyLocks: make(map[string]*sync.Mutex),
-		closeCh:  make(chan struct{}),
+		closeCh: make(chan struct{}),
 	}
 	db.wg.Add(1)
 	go db.cleanupExpiredKeys()
