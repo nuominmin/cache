@@ -75,7 +75,7 @@ func (db *memoryCache) cleanupExpiredKeys() {
 		case <-ticker.C:
 			now := time.Now().UnixNano()
 			db.data.Range(func(key, value any) bool {
-				it := value.(*item)
+				it := value.(item)
 				if it.expiration > 0 && now > it.expiration {
 					db.data.Delete(key)
 				}
