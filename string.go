@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"errors"
 	"time"
 )
@@ -147,4 +148,50 @@ func GetOrSet[T any](cache Cache, key string, fetchFunc func() (T, error), ttl i
 		value, err := fetchFunc()
 		return value, true, err
 	}, ttl)
+}
+
+func GetValueWithCacheAndHandler[T any](cache Cache, ctx context.Context, key string, fetchFunc func() (T, error), ttl int64, handlers ...func(ctx context.Context, data T) error) (T, error) {
+	data, err := GetOrSetWithCacheControl[T](cache, key, func() (T, bool, error) {
+		value, err := fetchFunc()
+		return value, true, err
+	}, ttl)
+
+	if err != nil {
+		return data, err
+	}
+
+	if len(handlers) == 0 {
+		return data, nil
+	}
+
+	for i := 0; i < len(handlers); i++ {
+		if err = handlers[i](ctx, data); err != nil {
+			return data, err
+		}
+	}
+
+	return data, Set[T](cache, key, data, ttl)
+}
+
+func GetValuesWithCacheAndHandler[T any](cache Cache, ctx context.Context, key string, fetchFunc func() ([]T, error), ttl int64, handlers ...func(ctx context.Context, data []T) ([]T, error)) ([]T, error) {
+	data, err := GetOrSetWithCacheControl[[]T](cache, key, func() ([]T, bool, error) {
+		value, err := fetchFunc()
+		return value, true, err
+	}, ttl)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if len(handlers) == 0 {
+		return data, nil
+	}
+
+	for i := 0; i < len(handlers); i++ {
+		if data, err = handlers[i](ctx, data); err != nil {
+			return nil, err
+		}
+	}
+
+	return data, Set[[]T](cache, key, data, ttl)
 }
