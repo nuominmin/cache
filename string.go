@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 )
 
@@ -113,8 +114,18 @@ func Get[T any](cache Cache, key string) (value T, err error) {
 
 // GetOrSetWithCacheControl 获取键值对，不存在将会调用 fetchFunc 函数获取数据并缓存起来
 func GetOrSetWithCacheControl[T any](cache Cache, key string, fetchFunc func() (T, bool, error), ttl int64) (T, error) {
-	cache.(*memoryCache).acquireLock("StringHandler", key)
-	defer cache.(*memoryCache).releaseLock("StringHandler", key)
+	memCache, ok := cache.(*memoryCache)
+	if !ok {
+		return *new(T), errors.New("类型断言失败：无法转换为 *memoryCache")
+	}
+
+	memCache.acquireLock("StringHandler", key)
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("解锁时发生恐慌: %v", r)
+		}
+		memCache.releaseLock("StringHandler", key)
+	}()
 
 	// 尝试从缓存中获取数据
 	value, err := Get[T](cache, key)
